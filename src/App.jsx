@@ -1,8 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
-import Login from '../Login'
-import Register from '../Register'
-import Dashboard from '../Dashboard'
+import Login from './Login'
+import Register from './Register'
+import Dashboard from './Dashboard'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()

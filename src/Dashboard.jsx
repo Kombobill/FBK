@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from './context/AuthContext'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { Play, Square, TrendingUp, TrendingDown, Activity, DollarSign, Target, Zap } from 'lucide-react'
 import axios from 'axios'
