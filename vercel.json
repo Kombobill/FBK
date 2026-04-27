@@ -1,9 +1,8 @@
 {
   "framework": "vite",
-  "buildCommand": "npx vite build",
+  "buildCommand": "node node_modules/vite/bin/vite.js build",
   "outputDirectory": "dist",
-  "installCommand": "npm install --legacy-peer-deps",
-  "devCommand": "npx vite",
+  "installCommand": "npm install",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }

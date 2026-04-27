@@ -9,7 +9,7 @@ export default function Landing() {
           <div style={{ width: 40, height: 40, background: 'var(--green)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Zap size={20} color="#000" fill="#000" />
           </div>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--green)', letterSpacing: 2 }}>TRADEBOT PRO</span>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--green)', letterSpacing: 2 }}>INSIDERX</span>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <Link to="/login" className="btn btn-ghost">Log in</Link>
@@ -23,10 +23,10 @@ export default function Landing() {
             ✓ Automated Trading Platform
           </div>
           <h1 style={{ fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 700, lineHeight: 1.1, marginBottom: 24, background: 'linear-gradient(135deg, #fff 0%, #8b949e 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Trade Smarter with<br />Automated Bots
+            Trade Like an<br />Insider
           </h1>
           <p style={{ fontSize: 18, color: 'var(--text-secondary)', marginBottom: 40, lineHeight: 1.6 }}>
-            Execute trades 24/7 with intelligent algorithms. Backtest strategies, manage risk, and maximize profits.
+            Access elite trading insights. Execute trades with precision. Be part of the inner circle.
           </p>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/register" className="btn btn-primary" style={{ height: 50, padding: '0 32px', fontSize: 16 }}>Start Trading Free</Link>
@@ -40,7 +40,7 @@ export default function Landing() {
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <h2 style={{ fontSize: 32, fontWeight: 600, textAlign: 'center', marginBottom: 16 }}>Everything You Need to Trade</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24, marginTop: 40 }}>
-            {[{icon:Bot, title:'Auto Trading Bots', desc:'Set strategy and let bots trade 24/7'},{icon:BarChart3, title:'Live Charts', desc:'Real-time market data with indicators'},{icon:TrendingUp, title:'Backtesting', desc:'Test strategies against history'},{icon:Shield, title:'Risk Management', desc:'Stop-loss and daily limits'},{icon:Zap, title:'Instant Execution', desc:'Fast trade execution'},{icon:Users, title:'Track Record', desc:'Full trade history & analytics'}].map(x => (
+            {[{icon:Bot, title:'Insider Signals', desc:'Get exclusive trading signals'},{icon:BarChart3, title:'Live Charts', desc:'Real-time market data with indicators'},{icon:TrendingUp, title:'Quick Trades', desc:'Fast execution on global markets'},{icon:Shield, title:'Risk Controls', desc:'Set your limits, trade safe'},{icon:Zap, title:'Instant Access', desc:'Start trading in seconds'},{icon:Users, title:'Track Record', desc:'Full trade history & analytics'}].map(x => (
               <div key={x.title} className="card" style={{ padding: 28 }}>
                 <div style={{ width: 48, height: 48, background: 'var(--green-dim)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
                   <x.icon size={22} color="var(--green)" />

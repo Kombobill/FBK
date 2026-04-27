@@ -1,260 +1,668 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from './context/AuthContext'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { Play, Square, TrendingUp, TrendingDown, Activity, DollarSign, Target, Zap } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { 
+  Play, Square, TrendingUp, TrendingDown, Activity, DollarSign, Target, Zap, Clock, 
+  ChevronUp, ChevronDown, BarChart2, Settings, RefreshCw, MessageCircle, X, Send, 
+  User, Briefcase, HelpCircle, Wallet, ArrowUpRight, ArrowDownLeft, CreditCard, History,
+  LayoutDashboard, PieChart, Bell, FileText, LogOut, Home, BarChart
+} from 'lucide-react'
 import axios from 'axios'
 
-function generateTick(prev) {
-  const change = (Math.random() - 0.485) * 3
-  return Math.max(900, Math.min(1100, prev + change))
-}
+const NAV_ITEMS = [
+  { id: 'trade', icon: Zap, label: 'Trade' },
+  { id: 'portfolio', icon: LayoutDashboard, label: 'Portfolio' },
+  { id: 'analytics', icon: BarChart, label: 'Analytics' },
+  { id: 'alerts', icon: Bell, label: 'Alerts' },
+  { id: 'settings', icon: Settings, label: 'Settings' },
+  { id: 'legal', icon: FileText, label: 'Legal' },
+]
 
 export default function Dashboard() {
-  const { user, updateBalance } = useAuth()
-  const [running, setRunning] = useState(false)
-  const [chartData, setChartData] = useState(() => {
-    let v = 1000; const d = []
-    for (let i = 60; i >= 0; i--) { v = generateTick(v); d.push({ t: i, v: +v.toFixed(3) }) }
-    return d
-  })
-  const [stats, setStats] = useState({ runs: 0, won: 0, lost: 0, stake: 0, payout: 0 })
+  const { user, updateBalance, accountType, switchAccountType, logout } = useAuth()
+  const [activeView, setActiveView] = useState('trade')
+  const [markets, setMarkets] = useState([])
+  const [tradeTypes, setTradeTypes] = useState([])
+  const [durations, setDurations] = useState({})
+  
+  const [selectedCategory, setSelectedCategory] = useState('forex')
+  const [selectedAsset, setSelectedAsset] = useState(null)
+  const [selectedTradeType, setSelectedTradeType] = useState('rise-fall')
+  const [selectedDuration, setSelectedDuration] = useState(5)
+  const [selectedDurationType, setSelectedDurationType] = useState('ticks')
+  const [stake, setStake] = useState(10)
+  
+  const [price, setPrice] = useState(1000)
+  const [chartData, setChartData] = useState([])
+  const [contracts, setContracts] = useState([])
   const [trades, setTrades] = useState([])
-  const [activeTab, setActiveTab] = useState('summary')
-  const [settings, setSettings] = useState({ stake: 1, market: 'Volatility 10 Index', strategy: 'Over/Under' })
-  const runRef = useRef(false)
-  const intervalRef = useRef(null)
-  const tickRef = useRef(null)
-  const balanceRef = useRef(user?.balance || 10000)
+  const [stats, setStats] = useState({ runs: 0, won: 0, lost: 0, stake: 0, payout: 0 })
+  
+  const [buying, setBuying] = useState(false)
+  const [priceInterval, setPriceInterval] = useState(null)
 
-  // Live chart ticking
+  const priceRef = useRef(null)
+  const chartRef = useRef(null)
+
   useEffect(() => {
-    tickRef.current = setInterval(() => {
-      setChartData(prev => {
-        const last = prev[prev.length - 1].v
-        const next = +generateTick(last).toFixed(3)
-        const newData = [...prev.slice(-79), { t: Date.now(), v: next }]
-        return newData
-      })
-    }, 800)
-    return () => clearInterval(tickRef.current)
+    loadMarkets()
+    loadTradeTypes()
+    loadDurations()
+    loadContracts()
+    loadTrades()
   }, [])
 
-  const simulateTrade = useCallback(async () => {
-    if (!runRef.current) return
-    const stake = parseFloat(settings.stake)
-    const win = Math.random() > 0.45
-    const payout = win ? +(stake * 1.85).toFixed(2) : 0
-    const pl = +(payout - stake).toFixed(2)
-    const newBalance = +(balanceRef.current + pl).toFixed(2)
-    balanceRef.current = newBalance
-
-    const trade = {
-      id: Date.now(), result: win ? 'won' : 'lost',
-      stake, payout, pl, market: settings.market,
-      time: new Date().toLocaleTimeString(), price: chartData[chartData.length - 1]?.v
+  useEffect(() => {
+    if (selectedAsset) {
+      startPriceStream()
     }
+    return () => stopPriceStream()
+  }, [selectedAsset])
 
-    setTrades(prev => [trade, ...prev].slice(0, 50))
-    setStats(prev => ({
-      runs: prev.runs + 1,
-      won: prev.won + (win ? 1 : 0),
-      lost: prev.lost + (win ? 0 : 1),
-      stake: +(prev.stake + stake).toFixed(2),
-      payout: +(prev.payout + payout).toFixed(2),
-    }))
+  const loadMarkets = async () => {
+    try {
+      const res = await axios.get('/api/markets')
+      setMarkets(res.data)
+      if (res.data.length > 0) {
+        setSelectedCategory('forex')
+        const cat = res.data.find(c => c.id === 'forex')
+        if (cat && cat.assets.length > 0) {
+          setSelectedAsset(cat.assets[0].id)
+        }
+      }
+    } catch (e) { console.error(e) }
+  }
 
-    updateBalance(newBalance)
-    try { await axios.post('/api/trades', { market: settings.market, stake, payout, result: win ? 'won' : 'lost', pl }) } catch {}
-  }, [settings, chartData, updateBalance])
+  const loadTradeTypes = async () => {
+    try {
+      const res = await axios.get('/api/trade/types')
+      setTradeTypes(res.data)
+    } catch (e) { console.error(e) }
+  }
 
-  const toggleRun = () => {
-    if (running) {
-      runRef.current = false
-      clearInterval(intervalRef.current)
-      setRunning(false)
-    } else {
-      runRef.current = true
-      setRunning(true)
-      intervalRef.current = setInterval(simulateTrade, 2500)
+  const loadDurations = async () => {
+    try {
+      const res = await axios.get('/api/trade/durations')
+      const durMap = {}
+      res.data.forEach(d => durMap[d.id] = d)
+      setDurations(durMap)
+      setSelectedDurationType('ticks')
+      setSelectedDuration(5)
+    } catch (e) { console.error(e) }
+  }
+
+  const loadContracts = async () => {
+    try {
+      const res = await axios.get('/api/contracts')
+      setContracts(res.data)
+    } catch (e) { console.error(e) }
+  }
+
+  const loadTrades = async () => {
+    try {
+      const res = await axios.get('/api/trades?limit=50')
+      setTrades(res.data)
+      const settled = res.data.filter(t => t.status === 'settled')
+      setStats({
+        runs: settled.length,
+        won: settled.filter(t => t.result === 'won').length,
+        lost: settled.filter(t => t.result === 'lost').length,
+        stake: settled.reduce((s, t) => s + t.stake, 0),
+        payout: settled.reduce((s, t) => s + (t.payout || 0), 0)
+      })
+    } catch (e) { console.error(e) }
+  }
+
+  const startPriceStream = async () => {
+    stopPriceStream()
+    if (!selectedAsset) return
+    
+    try {
+      const res = await axios.get(`/api/price/${selectedAsset}`)
+      setPrice(res.data.price)
+      initChart(res.data.price)
+    } catch (e) { console.error(e) }
+
+    priceRef.current = setInterval(async () => {
+      try {
+        const res = await axios.get(`/api/price/${selectedAsset}`)
+        setPrice(res.data.price)
+        updateChart(res.data.price)
+      } catch (e) {}
+    }, 500)
+    setPriceInterval(priceRef.current)
+  }
+
+  const stopPriceStream = () => {
+    if (priceRef.current) {
+      clearInterval(priceRef.current)
+      priceRef.current = null
     }
   }
 
-  useEffect(() => {
-    if (running) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = setInterval(simulateTrade, 2500)
+  const initChart = (initialPrice) => {
+    let p = initialPrice
+    const data = []
+    for (let i = 60; i >= 0; i--) {
+      p = p + (Math.random() - 0.5) * (p * 0.001)
+      data.push({ t: i, v: +p.toFixed(4) })
     }
-    return () => clearInterval(intervalRef.current)
-  }, [simulateTrade, running])
+    setChartData(data)
+  }
 
-  const current = chartData[chartData.length - 1]?.v || 1000
-  const prev = chartData[chartData.length - 2]?.v || 1000
-  const change = +(current - prev).toFixed(3)
+  const updateChart = (newPrice) => {
+    setChartData(prev => {
+      const last = prev[prev.length - 1].v
+      const next = +((last + (newPrice - last) * 0.3).toFixed(4))
+      const newData = [...prev.slice(-79), { t: Date.now(), v: next }]
+      return newData
+    })
+  }
+
+  const buyContract = async (direction) => {
+    if (buying || !selectedAsset) return
+    setBuying(true)
+    try {
+      const res = await axios.post('/api/contracts', {
+        symbol: selectedAsset,
+        tradeType: selectedTradeType,
+        direction,
+        stake,
+        duration: selectedDuration,
+        durationType: selectedDurationType
+      })
+      
+      updateBalance(res.data.balance)
+      setContracts(prev => [...prev, res.data.contract])
+      
+      setTimeout(async () => {
+        try {
+          const settleRes = await axios.post(`/api/contracts/${res.data.contract.id}/expire`)
+          updateBalance(settleRes.data.balance)
+          setContracts(prev => prev.filter(c => c.id !== res.data.contract.id))
+          loadTrades()
+        } catch (e) {}
+      }, getDurationMs(selectedDuration, selectedDurationType))
+      
+    } catch (e) {
+      alert(e.response?.data?.message || 'Failed to place trade')
+    } finally {
+      setBuying(false)
+    }
+  }
+
+  const getDurationMs = (duration, type) => {
+    const ms = { ticks: 100, seconds: 1000, minutes: 60000, hours: 3600000 }
+    return duration * (ms[type] || 1000)
+  }
+
+  const currentCategory = markets.find(m => m.id === selectedCategory)
+  const currentAsset = currentCategory?.assets.find(a => a.id === selectedAsset)
+  const currentTradeType = tradeTypes.find(t => t.id === selectedTradeType)
+  const currentDuration = durations[selectedDurationType]
+
   const pl = +(stats.payout - stats.stake).toFixed(2)
   const winRate = stats.runs ? Math.round((stats.won / stats.runs) * 100) : 0
 
+  const potentialPayout = stake * (currentTradeType?.multiplier || 1.85)
+
+  const [showChat, setShowChat] = useState(false)
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const [showWallet, setShowWallet] = useState(false)
+  const [walletData, setWalletData] = useState({ demoBalance: 10000, realBalance: 0, deposits: [], withdrawals: [] })
+  const [depositAmount, setDepositAmount] = useState('')
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [processing, setProcessing] = useState(false)
+
+  const loadWallet = async () => {
+    try {
+      const res = await axios.get('/api/users/wallet')
+      setWalletData(res.data)
+    } catch (e) { console.error(e) }
+  }
+
+  const handleDeposit = async () => {
+    if (!depositAmount || parseFloat(depositAmount) <= 0) return
+    setProcessing(true)
+    try {
+      const res = await axios.post('/api/users/deposit', { amount: depositAmount, method: 'bank_transfer' })
+      setWalletData(prev => ({
+        ...prev,
+        realBalance: res.data.balance,
+        deposits: [...prev.deposits, res.data.deposit]
+      }))
+      setDepositAmount('')
+      alert(res.data.message)
+    } catch (e) { alert(e.response?.data?.message || 'Deposit failed') }
+    setProcessing(false)
+  }
+
+  const handleWithdraw = async () => {
+    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) return
+    setProcessing(true)
+    try {
+      const res = await axios.post('/api/users/withdraw', { amount: withdrawAmount, method: 'bank_transfer' })
+      setWalletData(prev => ({
+        ...prev,
+        realBalance: res.data.balance,
+        withdrawals: [...prev.withdrawals, res.data.withdrawal]
+      }))
+      setWithdrawAmount('')
+      alert(res.data.message)
+    } catch (e) { alert(e.response?.data?.message || 'Withdrawal failed') }
+    setProcessing(false)
+  }
+
+  const loadChatMessages = async () => {
+    try {
+      const res = await axios.get('/api/chat/messages')
+      setChatMessages(res.data)
+    } catch (e) { console.error(e) }
+  }
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || sending) return
+    setSending(true)
+    try {
+      const res = await axios.post('/api/chat/message', { message: chatInput })
+      setChatMessages(prev => [...prev, ...res.data])
+      setChatInput('')
+    } catch (e) { console.error(e) }
+    setSending(false)
+  }
+
   return (
-    <div style={{ padding: 24, height: '100%', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600 }}>Dashboard</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>Live market & bot performance</p>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Sidebar Navigation */}
+      <div style={{ width: 72, background: 'var(--bg-1)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', padding: '12px 8px' }}>
+        <div style={{ padding: '8px 0', marginBottom: 16, textAlign: 'center' }}>
+          <Zap size={24} color="var(--green)" />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ textAlign: 'right', marginRight: 4 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>BALANCE</div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--green)' }}>${Number(user?.balance || 10000).toFixed(2)}</div>
-          </div>
-          <button onClick={toggleRun} className={`btn ${running ? 'btn-danger' : 'btn-primary'}`} style={{ gap: 8, minWidth: 110 }}>
-            {running ? <><Square size={14} /> Stop Bot</> : <><Play size={14} fill="currentColor" /> Run Bot</>}
+        
+        {NAV_ITEMS.map(item => (
+          <button key={item.id} onClick={() => setActiveView(item.id)}
+            style={{
+              width: '100%', padding: '12px 0', border: 'none', background: activeView === item.id ? 'var(--green)' : 'transparent',
+              borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              color: activeView === item.id ? '#000' : 'var(--text-muted)', marginBottom: 4, transition: 'all 0.15s'
+            }}>
+            <item.icon size={20} />
+            <span style={{ fontSize: 9 }}>{item.label}</span>
           </button>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-        {[
-          { label: 'Total Runs', value: stats.runs, icon: Activity, color: 'var(--blue)' },
-          { label: 'Win Rate', value: winRate + '%', icon: Target, color: 'var(--green)' },
-          { label: 'Total Staked', value: '$' + stats.stake.toFixed(2), icon: DollarSign, color: 'var(--amber)' },
-          { label: 'Profit / Loss', value: (pl >= 0 ? '+$' : '-$') + Math.abs(pl).toFixed(2), icon: pl >= 0 ? TrendingUp : TrendingDown, color: pl >= 0 ? 'var(--green)' : 'var(--red)' },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em' }}>{label.toUpperCase()}</span>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon size={13} color={color} />
-              </div>
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 600, fontFamily: 'var(--font-display)', color }}>{value}</div>
-          </div>
         ))}
+        
+        <div style={{ flex: 1 }} />
+        
+        <button onClick={logout} style={{
+          width: '100%', padding: '12px 0', border: 'none', background: 'transparent', borderRadius: 10,
+          cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: 'var(--text-muted)'
+        }}>
+          <LogOut size={20} />
+          <span style={{ fontSize: 9 }}>Logout</span>
+        </button>
       </div>
 
-      {/* Chart + Panel */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, flex: 1, minHeight: 0 }}>
-        {/* Chart */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{settings.market}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700 }}>{current.toFixed(3)}</span>
-                <span style={{ fontSize: 12, color: change >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                  {change >= 0 ? '▲' : '▼'} {Math.abs(change).toFixed(3)}
-                </span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {['Volatility 10 Index', 'Volatility 25 Index', 'Volatility 50 Index'].map(m => (
-                <button key={m} onClick={() => setSettings(s => ({ ...s, market: m }))} className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 11, padding: '4px 10px', background: settings.market === m ? 'var(--green-dim)' : '', color: settings.market === m ? 'var(--green)' : '' }}>
-                  {m.replace(' Index', '').replace('Volatility ', 'V')}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ padding: '8px 0', height: 'calc(100% - 80px)' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 10 }}>
-                <XAxis dataKey="t" hide />
-                <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: '#3a4a6a' }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v.toFixed(1)} />
-                <Tooltip contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                  labelFormatter={() => ''} formatter={v => [v.toFixed(3), 'Price']} />
-                <Line type="monotoneX" dataKey="v" stroke="#00e676" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Right panel */}
-        <div className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column' }}>
-          {/* Bot settings */}
-          <div style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12, letterSpacing: '0.08em' }}>BOT SETTINGS</div>
-            <div style={{ marginBottom: 10 }}>
-              <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 5 }}>Stake per trade (USD)</label>
-              <input className="input" type="number" min="0.35" max="100" step="0.5" value={settings.stake}
-                onChange={e => setSettings(s => ({ ...s, stake: e.target.value }))}
-                style={{ fontSize: 13 }} disabled={running} />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 5 }}>Strategy</label>
-              <select className="select" style={{ width: '100%' }} value={settings.strategy}
-                onChange={e => setSettings(s => ({ ...s, strategy: e.target.value }))} disabled={running}>
-                <option>Over/Under</option>
-                <option>Even/Odd</option>
-                <option>Rise/Fall</option>
-                <option>Higher/Lower</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-            {['summary', 'trades'].map(t => (
-              <button key={t} onClick={() => setActiveTab(t)} style={{
-                flex: 1, padding: '10px 0', fontSize: 12, fontWeight: 500, background: 'none',
-                border: 'none', borderBottom: `2px solid ${activeTab === t ? 'var(--green)' : 'transparent'}`,
-                color: activeTab === t ? 'var(--green)' : 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.15s'
-              }}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
-            ))}
-          </div>
-
-          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-            {activeTab === 'summary' && (
-              <div>
-                {[
-                  { label: 'Contracts won', value: stats.won, color: 'var(--green)' },
-                  { label: 'Contracts lost', value: stats.lost, color: 'var(--red)' },
-                  { label: 'Win rate', value: winRate + '%', color: winRate >= 50 ? 'var(--green)' : 'var(--red)' },
-                  { label: 'Total staked', value: '$' + stats.stake.toFixed(2), color: 'var(--text-primary)' },
-                  { label: 'Total payout', value: '$' + stats.payout.toFixed(2), color: 'var(--text-primary)' },
-                  { label: 'Net P/L', value: (pl >= 0 ? '+$' : '-$') + Math.abs(pl).toFixed(2), color: pl >= 0 ? 'var(--green)' : 'var(--red)' },
-                ].map(({ label, value, color }) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-display)', color }}>{value}</span>
-                  </div>
-                ))}
-                {!running && stats.runs === 0 && (
-                  <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                    <Zap size={24} style={{ margin: '0 auto 8px', display: 'block', opacity: 0.3 }} />
-                    Hit Run Bot to start trading
-                  </div>
-                )}
-              </div>
-            )}
-            {activeTab === 'trades' && (
-              <div>
-                {trades.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: 13 }}>No trades yet</div>
-                ) : trades.map(trade => (
-                  <div key={trade.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                    <div>
-                      <span className={trade.result === 'won' ? 'tag-green' : 'tag-red'} style={{ fontSize: 10 }}>{trade.result.toUpperCase()}</span>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{trade.time}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 12, fontFamily: 'var(--font-display)', color: trade.pl >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {trade.pl >= 0 ? '+' : ''}{trade.pl.toFixed(2)}
-                      </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>stake: ${trade.stake}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
-            <button className="btn btn-ghost btn-sm" style={{ width: '100%' }}
-              onClick={() => { setStats({ runs: 0, won: 0, lost: 0, stake: 0, payout: 0 }); setTrades([]) }}>
-              Reset stats
+      {/* Main Content Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { switchAccountType('demo'); setSelectedCategory('forex') }} className={`btn btn-sm ${accountType === 'demo' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Zap size={14} /> Demo
+            </button>
+            <button onClick={() => { switchAccountType('real'); setSelectedCategory('forex') }} className={`btn btn-sm ${accountType === 'real' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Briefcase size={14} /> Real Trading
             </button>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={() => { setShowChat(true); loadChatMessages() }} className="btn btn-ghost btn-sm" style={{ borderRadius: '50%', width: 36, height: 36, padding: 0 }}>
+              <MessageCircle size={16} />
+            </button>
+            <button onClick={() => { setShowWallet(true); loadWallet() }} className="btn btn-ghost btn-sm" style={{ borderRadius: '50%', width: 36, height: 36, padding: 0 }}>
+              <Wallet size={16} />
+            </button>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {accountType === 'demo' ? 'Demo Balance' : 'Real Account'}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-display)', color: accountType === 'demo' ? 'var(--green)' : 'var(--amber)' }}>
+                {accountType === 'demo' ? `$${Number(user?.balance || 10000).toFixed(2)}` : 'Trading'}
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* Main trading area */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16, flex: 1, minHeight: 0, padding: 16 }}>
+          {/* Left panel - Chart & Asset selection */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Asset selector */}
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {markets.map(cat => (
+                  <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`btn btn-ghost btn-sm ${selectedCategory === cat.id ? 'btn-primary' : ''}`}
+                    style={{ fontSize: 11, padding: '6px 12px', background: selectedCategory === cat.id ? 'var(--green)' : '', color: selectedCategory === cat.id ? '#000' : '' }}>
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+              {currentCategory && (
+                <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {currentCategory.assets.map(asset => (
+                    <button key={asset.id} onClick={() => setSelectedAsset(asset.id)} className="btn btn-sm"
+                      style={{ fontSize: 11, padding: '6px 12px', background: selectedAsset === asset.id ? 'var(--bg-3)' : '', border: selectedAsset === asset.id ? '1px solid var(--green)' : '1px solid var(--border)' }}>
+                      {asset.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Price chart */}
+            <div className="card" style={{ flex: 1, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 300 }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{currentAsset?.name || 'Select asset'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700 }}>{price.toFixed(currentAsset?.pip < 0.01 ? 4 : 2)}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {currentDuration?.options?.slice(0, 4).map(d => (
+                    <button key={d} onClick={() => setSelectedDuration(d)} className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 10, padding: '4px 8px', background: selectedDuration === d ? 'var(--bg-3)' : '' }}>
+                      {d} {selectedDurationType === 'ticks' ? 't' : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1, padding: '8px 0', minHeight: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 10 }}>
+                    <XAxis dataKey="t" hide />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: '#3a4a6a' }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v.toFixed(1)} />
+                    <Tooltip contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                      labelFormatter={() => ''} formatter={v => [v.toFixed(4), 'Price']} />
+                    <Line type="monotoneX" dataKey="v" stroke="#00e676" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* Right panel - Trade interface */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Trade type selector */}
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Trade Type</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {tradeTypes.map(t => (
+                  <button key={t.id} onClick={() => setSelectedTradeType(t.id)} className="btn btn-sm"
+                    style={{ fontSize: 10, padding: '6px 10px', background: selectedTradeType === t.id ? 'var(--green)' : '', color: selectedTradeType === t.id ? '#000' : '' }}>
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Duration & Stake */}
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Duration Type</div>
+                  <select className="select" style={{ width: '100%', fontSize: 12 }} value={selectedDurationType}
+                    onChange={e => { setSelectedDurationType(e.target.value); setSelectedDuration(durations[e.target.value]?.options?.[0] || 5) }}>
+                    {Object.keys(durations).map(k => (
+                      <option key={k} value={k}>{durations[k]?.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Duration</div>
+                  <select className="select" style={{ width: '100%', fontSize: 12 }} value={selectedDuration}
+                    onChange={e => setSelectedDuration(parseInt(e.target.value))}>
+                    {currentDuration?.options?.map(d => (
+                      <option key={d} value={d}>{d} {selectedDurationType === 'ticks' ? 'ticks' : selectedDurationType === 'seconds' ? 's' : selectedDurationType === 'minutes' ? 'm' : 'h'}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Stake (USD)</div>
+                <input className="input" type="number" min="0.35" max="10000" step="0.5" value={stake}
+                  onChange={e => setStake(e.target.value)} style={{ fontSize: 14, fontWeight: 600 }} />
+              </div>
+              <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-2)', borderRadius: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Potential payout</span>
+                  <span style={{ fontWeight: 600, color: 'var(--green)' }}>${potentialPayout.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Multiplier</span>
+                  <span style={{ fontWeight: 600 }}>{currentTradeType?.multiplier || 1.85}x</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Buy buttons */}
+            <div className="card" style={{ padding: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+                <button onClick={() => buyContract('rise')} disabled={buying || !selectedAsset}
+                  style={{ padding: 20, border: 'none', background: 'var(--green)', color: '#000', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <ChevronUp size={20} /> BUY RISE
+                </button>
+                <button onClick={() => buyContract('fall')} disabled={buying || !selectedAsset}
+                  style={{ padding: 20, border: 'none', background: 'var(--red)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <ChevronDown size={20} /> BUY FALL
+                </button>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <div style={{ padding: 12, background: 'var(--bg-1)', borderRadius: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>TRADES</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{stats.runs}</div>
+              </div>
+              <div style={{ padding: 12, background: 'var(--bg-1)', borderRadius: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>WIN</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--green)' }}>{winRate}%</div>
+              </div>
+              <div style={{ padding: 12, background: 'var(--bg-1)', borderRadius: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>P/L</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: pl >= 0 ? 'var(--green)' : 'var(--red)' }}>{pl >= 0 ? '+' : ''}${pl}</div>
+              </div>
+            </div>
+
+            {/* Recent trades */}
+            <div className="card" style={{ flex: 1, padding: 12, overflow: 'auto', minHeight: 150 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Recent Trades</div>
+              {trades.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 12 }}>No trades yet</div>
+              ) : (
+                trades.slice(0, 10).map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                    <div>
+                      <span className={t.result === 'won' ? 'tag-green' : 'tag-red'} style={{ fontSize: 9 }}>{t.result?.toUpperCase()}</span>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{t.symbol}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: t.pl >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        {t.pl >= 0 ? '+' : ''}{t.pl?.toFixed(2) || '0.00'}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>${t.stake}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Chat Support Popup */}
+        {showChat && (
+          <div style={{
+            position: 'fixed', bottom: 20, right: 20, width: 360, height: 480,
+            background: 'var(--bg-0)', borderRadius: 16, border: '1px solid var(--border)',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column',
+            zIndex: 1000, overflow: 'hidden'
+          }}>
+            <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--green)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#000' }}>
+                <MessageCircle size={18} />
+                <span style={{ fontWeight: 600 }}>Support Chat</span>
+              </div>
+              <button onClick={() => setShowChat(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#000' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {chatMessages.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 12 }}>
+                  <HelpCircle size={32} style={{ margin: '0 auto 8px', opacity: 0.3 }} />
+                  <div>Start a conversation</div>
+                  <div style={{ fontSize: 11, marginTop: 4 }}>Our AI assistant is here to help</div>
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} style={{
+                  display: 'flex', flexDirection: 'column', alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start'
+                }}>
+                  <div style={{
+                    maxWidth: '80%', padding: '10px 14px', borderRadius: 16,
+                    background: msg.sender === 'user' ? 'var(--green)' : msg.sender === 'support' ? 'var(--blue)' : 'var(--bg-2)',
+                    color: msg.sender === 'user' ? '#000' : 'var(--text-primary)',
+                    fontSize: 13, lineHeight: 1.4
+                  }}>
+                    {msg.text}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {msg.sender === 'ai' ? '🤖 AI Assistant' : msg.sender === 'support' ? '👤 Support' : '👤 You'}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <input className="input" placeholder="Type your message..." value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendChatMessage()}
+                style={{ flex: 1 }} />
+              <button onClick={sendChatMessage} className="btn btn-primary" style={{ padding: '8px 12px' }} disabled={sending}>
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Wallet Popup */}
+        {showWallet && (
+          <div style={{
+            position: 'fixed', bottom: 20, right: 20, width: 400, height: 520,
+            background: 'var(--bg-0)', borderRadius: 16, border: '1px solid var(--border)',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column',
+            zIndex: 1000, overflow: 'hidden'
+          }}>
+            <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--amber)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#000' }}>
+                <Wallet size={18} />
+                <span style={{ fontWeight: 600 }}>Wallet</span>
+              </div>
+              <button onClick={() => setShowWallet(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#000' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+              {/* Balance Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                <div style={{ padding: 14, background: 'var(--green-dim)', borderRadius: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Demo Balance</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>${walletData.demoBalance?.toFixed(2)}</div>
+                </div>
+                <div style={{ padding: 14, background: 'var(--amber-dim)', borderRadius: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Real Balance</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--amber)' }}>${walletData.realBalance?.toFixed(2)}</div>
+                </div>
+              </div>
+
+              {/* Deposit Form */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <ArrowDownLeft size={12} /> Deposit Funds
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="input" type="number" placeholder="Amount ($10 - $50,000)" value={depositAmount}
+                    onChange={e => setDepositAmount(e.target.value)} style={{ flex: 1 }} />
+                  <button onClick={handleDeposit} className="btn btn-primary" disabled={processing || !depositAmount}>
+                    Deposit
+                  </button>
+                </div>
+              </div>
+
+              {/* Withdraw Form */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <ArrowUpRight size={12} /> Withdraw Funds
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="input" type="number" placeholder="Amount (min $10)" value={withdrawAmount}
+                    onChange={e => setWithdrawAmount(e.target.value)} style={{ flex: 1 }} />
+                  <button onClick={handleWithdraw} className="btn btn-danger" disabled={processing || !withdrawAmount}>
+                    Withdraw
+                  </button>
+                </div>
+              </div>
+
+              {/* Transaction History */}
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <History size={12} /> Recent Transactions
+                </div>
+                {walletData.deposits?.length === 0 && walletData.withdrawals?.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 12 }}>
+                    No transactions yet
+                  </div>
+                ) : (
+                  <>
+                    {walletData.deposits?.slice(-3).reverse().map(d => (
+                      <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--green-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <ArrowDownLeft size={12} color="var(--green)" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 12 }}>Deposit</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{new Date(d.createdAt).toLocaleDateString()}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--green)' }}>+${d.amount}</div>
+                      </div>
+                    ))}
+                    {walletData.withdrawals?.slice(-3).reverse().map(w => (
+                      <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--red-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <ArrowUpRight size={12} color="var(--red)" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 12 }}>Withdrawal</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{new Date(w.createdAt).toLocaleDateString()}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)' }}>-${w.amount}</div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
