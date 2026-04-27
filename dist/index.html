@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InsiderX - Trade Like an Insider</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-0: #0d1117;
+        --bg-1: #161b22;
+        --bg-2: #21262d;
+        --bg-3: #30363d;
+        --border: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --text-muted: #6e7681;
+        --green: #00e676;
+        --green-dim: rgba(0, 230, 118, 0.1);
+        --red: #ff3d57;
+        --red-dim: rgba(255, 61, 87, 0.1);
+        --amber: #ffab00;
+        --blue: #58a6ff;
+        --font-display: 'JetBrains Mono', monospace;
+        --font-body: 'Outfit', sans-serif;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: var(--font-body);
+        background: var(--bg-0);
+        color: var(--text-primary);
+        -webkit-font-smoothing: antialiased;
+      }
+      .card {
+        background: var(--bg-1);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+      .input {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--bg-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-family: inherit;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      .input:focus {
+        outline: none;
+        border-color: var(--green);
+        box-shadow: 0 0 0 3px rgba(0, 230, 118, 0.15);
+      }
+      .input::placeholder { color: var(--text-muted); }
+      .select {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--bg-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .btn-primary {
+        background: var(--green);
+        color: #000;
+      }
+      .btn-primary:hover { background: #00c853; }
+      .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+      .btn-danger { background: var(--red); color: #fff; }
+      .btn-danger:hover { background: #e63649; }
+      .btn-ghost { background: transparent; color: var(--text-secondary); }
+      .btn-ghost:hover { background: var(--bg-2); color: var(--text-primary); }
+      .btn-sm { padding: 6px 12px; font-size: 12px; }
+      .tag-green {
+        display: inline-block;
+        padding: 2px 8px;
+        background: var(--green-dim);
+        color: var(--green);
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .tag-red {
+        display: inline-block;
+        padding: 2px 8px;
+        background: var(--red-dim);
+        color: var(--red);
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .animate-in {
+        animation: fadeIn 0.3s ease-out;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-DYxmP-B_.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-ORfQQwLo.js">
+    <link rel="modulepreload" crossorigin href="/assets/icons-BLcc7jPX.js">
+    <link rel="modulepreload" crossorigin href="/assets/charts-CQOHnC8Z.js">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+
+<!--node server.js npm run dev-->
